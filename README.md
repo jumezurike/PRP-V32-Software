@@ -104,7 +104,8 @@ PRP-V32-Software/
 │   ├── tier2/                       ← Technical reference (read second)
 │   ├── tier3/                       ← Session history (read third, newest first)
 │   ├── tier4/                       ← Security baseline (read fourth)
-│   └── tier5/                       ← Live code — up to 20 key files (read fifth)
+│   ├── tier5/                       ← Live code — up to 20 key files (read fifth)
+│   └── tier6/                       ← BC/DR and verified recovery (read sixth)
 ├── docs/
 │   ├── NPS-PROTOCOL.md              ← Full NPS specification and tier manifest
 │   ├── templates/
@@ -155,8 +156,9 @@ This creates the tier directory structure and registers it in `docs/NPS-PROTOCOL
 ### Step 5 — Populate your tiers
 
 Add your project's governance, technical reference, and session history
-files to the appropriate tier directories. See each `tiers/tierN/README.md`
-for guidance on what belongs there.
+files to the appropriate tier directories, including Tier 6 (BC/DR and
+verified recovery). See each `tiers/tierN/README.md` for guidance on what
+belongs there.
 
 ### Step 6 — Wrap your work commands
 

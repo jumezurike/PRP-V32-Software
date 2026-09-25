@@ -63,14 +63,15 @@ On receiving "Non-Markovian Property Startup":
   STEP 3 — Read all Tier 3 files (Session History) newest → oldest
   STEP 4 — Read all Tier 4 files (Security Baseline) in listed order
   STEP 5 — Read all Tier 5 files (Live Code) in listed order
-  STEP 6 — Write NPS audit file: docs/nps-audits/NPS_AUDIT_YYYYMMDD_HHMM.md
-  STEP 7 — Run: bash scripts/nps-gate.sh --accept
+  STEP 6 — Read all Tier 6 files (BC/DR and Verified Recovery) in listed order
+  STEP 7 — Write NPS audit file: docs/nps-audits/NPS_AUDIT_YYYYMMDD_HHMM.md
+  STEP 8 — Run: bash scripts/nps-gate.sh --accept
            (writes scripts/.nps_sentinel — required for git commits to pass)
-  STEP 8 — Declare: "NPS COMPLETE — [date] [time] — ready for work"
+  STEP 9 — Declare: "NPS COMPLETE — [date] [time] — ready for work"
 
 The agent may not declare NPS COMPLETE until Steps 1–7 are fully done.
 The audit file must be written and the gate script run before the declaration.
-Steps 6 and 7 are not optional. Step 8 is the gate that authorises all work.
+Steps 6, 7, and 8 are not optional. Step 9 is the gate that authorises all work.
 
 --------------------------------------------------------------------------------
 
@@ -254,6 +255,20 @@ Steps 6 and 7 are not optional. Step 8 is the gate that authorises all work.
 
 --------------------------------------------------------------------------------
 
+## TIER 6 — BC/DR AND VERIFIED RECOVERY (read sixth, before any consequential action)
+
+  T6-01  docs/DR-RUNBOOK.md
+  T6-02  docs/DR-CREDENTIAL-RECOVERY.md
+  T6-03  docs/RECOVERY-HASH-CHEATSHEET.md
+
+  NOTE: Tier 6 covers disaster-recovery runbooks, credential/token recovery
+  procedures, and recovery-verification references. It is read last because
+  it establishes the recovery-point and continuity controls the agent must
+  know before taking any action with consequential or destructive impact.
+  When a new DR/recovery document is added, it must be added to this list.
+
+--------------------------------------------------------------------------------
+
 ## AUDIT FILE FORMAT
 
 File path   : docs/nps-audits/NPS_AUDIT_YYYYMMDD_HHMM.md
@@ -267,7 +282,7 @@ The audit file must contain:
 
   Section 2 — READING DECLARATION
     One row per file read. Status (✓ read / ✗ missing). One-sentence summary.
-    Tier 1 through Tier 5 in order.
+    Tier 1 through Tier 6 in order.
 
   Section 3 — OPEN ITEMS CARRIED FORWARD
     All open items from prior sessions that are still unresolved.
@@ -297,6 +312,7 @@ This document must be updated (with scoped principal approval) when:
   2. A new core server file is created → add to Tier 5
   3. A new accepted security finding is documented → add to Tier 4
   4. A new session report is filed → add to top of Tier 3 list
+  5. A new DR/recovery document is added → add to Tier 6
 
 Maintenance is part of Step 5 of the session close protocol.
 A session is NOT closed until NPS-PROTOCOL.md reflects the new session report.
