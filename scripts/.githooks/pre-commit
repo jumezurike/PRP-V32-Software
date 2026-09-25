@@ -1,0 +1,227 @@
+#!/usr/bin/env bash
+# pre-commit — UCHU Commit Gate
+# Universal Codified Hypervisor Unit  v1.0.0
+# PRP v3.1 §30 + §2 — Protocol Owner: Josiah Umezurike
+#
+# Blocks every commit unless ALL conditions are met:
+#
+#   CHECK 0:   NPS sentinel    — callsign received this session
+#   CHECK 0.5: Approval sentinel — change pre-approved via approval_gate.sh
+#   CHECK 1:   NPS label check — tier label sequences are gapless and non-duplicate
+#   CHECK 1.5: Session report  — staged reports must have valid NPS LABEL CHECK section
+#   CHECK 2:   Protocol Owner approval — STATUS: APPROVED + UWA in .local/approval.txt
+#
+# Install:
+#   git config core.hooksPath scripts/.githooks
+#   (run setup_nps_tiers.sh — it does this automatically)
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+APPROVAL_FILE="$REPO_ROOT/.local/approval.txt"
+
+# ── CHECK 0: Session callsign received ───────────────────────────────────────
+if ! bash "$REPO_ROOT/scripts/nps_gate.sh" --check 2>/dev/null; then
+  echo "" >&2
+  echo "⛔  UCHU — COMMIT BLOCKED" >&2
+  echo "    Session callsign not received." >&2
+  echo "" >&2
+  echo "    Provide the callsign to open the session:" >&2
+  echo "      bash scripts/nps_gate.sh \"[your callsign]\"" >&2
+  echo "" >&2
+  echo "    (Callsign is configured in .uchu/config)" >&2
+  echo "" >&2
+  exit 1
+fi
+
+# ── CHECK 0.5: Approval sentinel ─────────────────────────────────────────────
+APPROVAL_SENTINEL="$REPO_ROOT/scripts/.approval_granted"
+if [[ ! -f "$APPROVAL_SENTINEL" ]]; then
+  echo "" >&2
+  echo "⛔  UCHU — COMMIT BLOCKED" >&2
+  echo "    No approval sentinel found." >&2
+  echo "" >&2
+  echo "    Required sequence before any commit:" >&2
+  echo "" >&2
+  echo "      1. bash scripts/approval_gate.sh --request 'change'" >&2
+  echo "      2. Protocol Owner types 'approved' or 'proceed'" >&2
+  echo "      3. bash scripts/approval_gate.sh --grant 'change'" >&2
+  echo "" >&2
+  echo "    Diagnose: bash scripts/approval_gate.sh --status" >&2
+  echo "" >&2
+  exit 1
+fi
+
+# ── CHECK 0.6: exact staged-tree binding ─────────────────────────────────────
+if [[ -f "$APPROVAL_FILE" ]]; then
+  APPROVED_TREE=$(grep "^STAGED-TREE:" "$APPROVAL_FILE" | sed 's/^STAGED-TREE:[[:space:]]*//')
+  if [[ -z "$APPROVED_TREE" ]]; then
+    echo "⛔  UCHU — COMMIT BLOCKED (approval lacks staged-tree binding)" >&2
+    echo "    Regenerate approval with: bash scripts/stage_for_approval.sh" >&2
+    exit 1
+  fi
+  CURRENT_TREE=$(git write-tree)
+  if [[ "$APPROVED_TREE" != "$CURRENT_TREE" ]]; then
+    echo "⛔  UCHU — COMMIT BLOCKED (staged content changed after approval)" >&2
+    echo "    Regenerate approval with: bash scripts/stage_for_approval.sh" >&2
+    exit 1
+  fi
+fi
+# Sentinel is single-use — consume it now
+rm -f "$APPROVAL_SENTINEL"
+echo "✓  UCHU: approval sentinel consumed — change pre-authorized."
+
+# ── CHECK 1: NPS label validation ─────────────────────────────────────────────
+bash "$REPO_ROOT/scripts/validate_nps_labels.sh"
+NPS_STATUS=$?
+
+if [[ $NPS_STATUS -ne 0 ]]; then
+  echo "" >&2
+  echo "⛔  UCHU — COMMIT BLOCKED (NPS label check failed)" >&2
+  echo "    Fix the label errors above, then re-run git commit." >&2
+  echo "" >&2
+  exit 1
+fi
+
+# ── CHECK 1.5: Session-report NPS LABEL CHECK section ─────────────────────────
+STAGED_REPORTS=$(git diff --cached --name-only | grep '^docs/session-reports/' || true)
+if [[ -n "$STAGED_REPORTS" ]]; then
+  REPORT_ERRORS=0
+  TMPFILE=$(mktemp /tmp/nps-report-check.XXXXXX)
+  trap 'rm -f "$TMPFILE"' EXIT
+
+  while IFS= read -r REPORT; do
+    if git show :"$REPORT" > "$TMPFILE" 2>/dev/null; then
+      bash "$REPO_ROOT/scripts/validate_nps_labels.sh" --report "$TMPFILE"
+      if [[ $? -ne 0 ]]; then
+        echo "  (staged content of: $REPORT)" >&2
+        REPORT_ERRORS=$(( REPORT_ERRORS + 1 ))
+      fi
+    fi
+  done <<< "$STAGED_REPORTS"
+
+  if [[ $REPORT_ERRORS -ne 0 ]]; then
+    echo "" >&2
+    echo "⛔  UCHU — COMMIT BLOCKED (session report NPS LABEL CHECK invalid)" >&2
+    echo "" >&2
+    echo "    Every staged session report must contain a valid 'NPS LABEL CHECK'" >&2
+    echo "    section with ALL of the following fields:" >&2
+    echo "      • Exit code: 0" >&2
+    echo "      • Timestamp: <UTC ISO-8601 ending in Z>" >&2
+    echo "      • Summary:   <OK: or ERROR: line from validate_nps_labels.sh>" >&2
+    echo "" >&2
+    exit 1
+  fi
+fi
+
+# ── CHECK 2: Protocol Owner approval ──────────────────────────────────────────
+
+# 2a. Approval file must exist
+if [[ ! -f "$APPROVAL_FILE" ]]; then
+  echo "" >&2
+  echo "⛔  UCHU — COMMIT BLOCKED" >&2
+  echo "    No approval file found at .local/approval.txt" >&2
+  echo "    Run: bash scripts/stage_for_approval.sh" >&2
+  echo "" >&2
+  exit 1
+fi
+
+# 2b. Status must be APPROVED
+if ! grep -q "^STATUS: APPROVED" "$APPROVAL_FILE"; then
+  echo "" >&2
+  echo "⛔  UCHU — COMMIT BLOCKED" >&2
+  echo "    .local/approval.txt status is not APPROVED." >&2
+  echo "" >&2
+  echo "    Protocol Owner must:" >&2
+  echo "      1. Open .local/approval.txt" >&2
+  echo "      2. Change STATUS to APPROVED" >&2
+  echo "      3. Sign with their UWA" >&2
+  echo "      4. Type 'approved' or 'proceed' in the chat" >&2
+  echo "" >&2
+  exit 1
+fi
+
+# 2c. UWA (preferred) or BREAK_GLASS email fallback
+UWA=$(grep "^UWA:" "$APPROVAL_FILE" | sed 's/^UWA:[[:space:]]*//')
+EMAIL=$(grep "^EMAIL:" "$APPROVAL_FILE" | sed 's/^EMAIL:[[:space:]]*//' | grep -v "no-UWA fallback" || true)
+BG_AUDIT="$REPO_ROOT/scripts/.approval_log"
+BG_STAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+if [[ -n "$UWA" ]]; then
+  IDENTITY="$UWA"
+  IDENTITY_TYPE="UWA"
+elif [[ "${BREAK_GLASS:-}" == "1" && -n "$EMAIL" ]]; then
+  IDENTITY="$EMAIL"
+  IDENTITY_TYPE="EMAIL/BREAK_GLASS"
+  echo "[$BG_STAMP] BREAK_GLASS COMMIT — email: $EMAIL" >> "$BG_AUDIT"
+  echo "" >&2
+  echo "⚠⚠⚠  WARNING: BREAK_GLASS OVERRIDE ACTIVE  ⚠⚠⚠" >&2
+  echo "      UWA gate bypassed — authorized by email: $EMAIL" >&2
+  echo "      This event is permanently logged." >&2
+  echo "" >&2
+elif [[ -n "$EMAIL" ]]; then
+  echo "" >&2
+  echo "⛔  UCHU — COMMIT BLOCKED" >&2
+  echo "    EMAIL: found but BREAK_GLASS override is not active." >&2
+  echo "    To use email fallback: BREAK_GLASS=1 git commit -m '...'" >&2
+  echo "    To use UWA (preferred): fill in the 'UWA:' line instead." >&2
+  echo "" >&2
+  exit 1
+else
+  echo "" >&2
+  echo "⛔  UCHU — COMMIT BLOCKED" >&2
+  echo "    No identity found in .local/approval.txt" >&2
+  echo "    Option A (preferred) — add UWA on the 'UWA:' line." >&2
+  echo "    Option B (no UWA)    — add your email on the 'EMAIL:' line," >&2
+  echo "                           then run: BREAK_GLASS=1 git commit" >&2
+  echo "" >&2
+  exit 1
+fi
+
+# 2d. Every staged file must be listed in the approval
+STAGED=$(git diff --cached --name-only)
+BLOCKED=""
+for file in $STAGED; do
+  if ! grep -qF "  $file" "$APPROVAL_FILE"; then
+    BLOCKED="$BLOCKED\n    ✗ $file"
+  fi
+done
+
+if [[ -n "$BLOCKED" ]]; then
+  echo "" >&2
+  echo "⛔  UCHU — COMMIT BLOCKED" >&2
+  echo "    These staged files are NOT listed in .local/approval.txt:" >&2
+  printf "$BLOCKED\n" >&2
+  echo "" >&2
+  echo "    Run: bash scripts/stage_for_approval.sh  to regenerate." >&2
+  echo "" >&2
+  exit 1
+fi
+
+# ── All checks passed ─────────────────────────────────────────────────────────
+echo ""
+echo "✓  UCHU — COMMIT AUTHORIZED"
+echo "   NPS labels: OK"
+echo "   Approved by: $IDENTITY ($IDENTITY_TYPE)"
+echo ""
+
+# Clear the approval file so it cannot be reused
+> "$APPROVAL_FILE"
+
+# ── Post-commit CR reminder ───────────────────────────────────────────────────
+CR_ID_FILE="$REPO_ROOT/scripts/.approval_cr_id"
+if [[ -f "$CR_ID_FILE" ]]; then
+  CR_ID=$(cat "$CR_ID_FILE" | tr -d '[:space:]')
+  echo "  ┌─────────────────────────────────────────────────────────┐"
+  echo "  │  UCHU — MANDATORY NEXT STEP: Close the Change Record    │"
+  echo "  │                                                         │"
+  printf "  │  CR: %-51s│\n" "$CR_ID is still open."
+  echo "  │                                                         │"
+  echo "  │  Run:                                                   │"
+  echo "  │    bash scripts/approval_gate.sh --deploy \\             │"
+  echo "  │      \"<files affected>\" \"<rollback plan>\"               │"
+  echo "  │                                                         │"
+  echo "  │  Skipping --deploy is a PRP §4 violation.               │"
+  echo "  └─────────────────────────────────────────────────────────┘"
+  echo ""
+fi
+
+exit 0

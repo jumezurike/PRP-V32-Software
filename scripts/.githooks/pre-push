@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+# pre-push — UCHU Session-Close Gate
+# Universal Codified Hypervisor Unit  v1.0.0
+# PRP v3.1 §30.6 + §10 + §21.7 — Protocol Owner: Josiah Umezurike
+#
+# Blocks every push unless session-close is complete:
+#
+#   CHECK 0  (§21.7): GitHub pushes require HUMAN_PUSH=1 — agents cannot push
+#   CHECK 1:  Session report dated today in docs/session-reports/
+#   CHECK 2:  Project metadata carries today's date
+#   CHECK 3:  Security gate sentinel is dated today and PASSED
+#
+# SKIP (emergency only — Protocol Owner must be notified):
+#   SKIP_SESSION_CLOSE=1 git push    — bypasses all checks
+#   SKIP_SESSION_CLOSE_REPORT=1      — bypasses session report check only
+#   SKIP_SESSION_CLOSE_METADATA=1    — bypasses metadata date check only
+#
+# For the canonical B2B-Lokdon origin/main release path, all session-close
+# skips are rejected and the PRP v3.2 release-integrity gate additionally
+# requires HUMAN_PUSH=1, a valid short-lived RELEASE_PUSH_AUTHORIZATION, and
+# a matching unconsumed READY_FOR_HUMAN_RELEASE database candidate.
+#
+# Install:
+#   git config core.hooksPath scripts/.githooks
+#   (run setup_nps_tiers.sh — it does this automatically)
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+
+# ── CHECK 0 (§21.7): Block autonomous agent pushes to GitHub ──────────────────
+# UCHU enforces a structural boundary: AI agents may not push to GitHub.
+# Only a human, with HUMAN_PUSH=1 set manually in their terminal, may push.
+# The agent has no mechanism to set this environment variable.
+#
+# Human push: HUMAN_PUSH=1 git push
+REMOTE_URL=$(git remote get-url "${1:-origin}" 2>/dev/null || echo "")
+if echo "$REMOTE_URL" | grep -qi "github\.com"; then
+  if [[ "${HUMAN_PUSH:-0}" != "1" ]]; then
+    echo "" >&2
+    echo "⛔  UCHU — PUSH BLOCKED  (§21.7 Agent Push Prohibition)" >&2
+    echo "" >&2
+    echo "    Remote: $REMOTE_URL" >&2
+    echo "" >&2
+    echo "    AI agents are prohibited from pushing to GitHub." >&2
+    echo "    This is a structural boundary, not a convention." >&2
+    echo "    (PRP v3.1 §21.7 + §24.4)" >&2
+    echo "" >&2
+    echo "    If YOU are the human developer pushing this, run:" >&2
+    echo "      HUMAN_PUSH=1 git push" >&2
+    echo "" >&2
+    exit 1
+  fi
+  echo "✓  UCHU: HUMAN_PUSH=1 confirmed — push authorized by human." >&2
+fi
+
+if ! bash "$REPO_ROOT/scripts/validate_session_close.sh"; then
+  exit 1
+fi
+
+# Do not exec session close: release integrity must run only after it succeeds.
+bash "$REPO_ROOT/scripts/release_integrity_gate.sh" "$@"

@@ -1,0 +1,180 @@
+================================================================================
+TEMPLATE — NOT A SESSION REPORT
+  This file is the canonical template for session reports.
+  It will NOT be counted by the session-close gate because it does not carry
+  today's date and does not end in _PR.txt.  The gate matches only files of
+  the form:  <INITIALS>_<ENV>_YYYYMMDD_<HHMM|A|B|C>_PR.txt
+  Copy this file to that naming convention when writing a real report.
+================================================================================
+SESSION REPORT — PRP v3.1 DELIVERY
+================================================================================
+INITIALS        : JU
+ENV             : DEV
+DATE            :2026-07-06
+SESSION ID      :2026-07-06 A        ← increment suffix (A, B, C …) if >1 session/day
+REPORT FILENAME : JU_DEV_YYYYMMDD_HHMM_PR.txt
+AUTHOR          : Josiah Umezurike
+AUTHORITY       : LokDon AISM / CyberLockX
+APPROVED BY UWA : LCN1960042316344I0A501006464UMUANI00000000000
+GIT TIP (pre)   : <git rev-parse HEAD before first file change>
+GIT TIP (post)  : <git rev-parse HEAD after last commit>
+================================================================================
+
+DELIVERY SUMMARY
+----------------
+<One paragraph.  What was delivered, what problem it solves, and whether it is
+ deployed to production.>
+
+================================================================================
+PHASE 1 — ANALYSIS
+================================================================================
+ROOT CAUSE
+----------
+<What broke / what was missing and why.>
+
+PROBLEM GENESIS
+---------------
+<How the issue surfaced; which session or ticket first identified it.>
+
+================================================================================
+PHASE 2 — APPROVAL
+================================================================================
+CHANGE REQUEST  : CR-NNN — "<title>"
+APPROVED BY     : Josiah Umezurike (Protocol Owner)
+APPROVAL METHOD : <"verbal in chat" | "approval_gate.sh --grant">
+DATE            :2026-07-06
+
+================================================================================
+PHASE 3 — PREPARATION
+================================================================================
+GIT BASELINE    : <branch / commit before changes>
+BACKUP STATE    : <any snapshots, DB dumps, or Replit checkpoint IDs>
+ROLLBACK PLAN   : <step-by-step undo — be specific>
+
+================================================================================
+PHASE 4 — IMPLEMENTATION
+================================================================================
+FILE 1 — <path/to/file.ts>  [CREATED | EDITED | DELETED]
+  <Describe every meaningful change: functions added/removed, logic changed,
+   constants updated.  Do not paste raw diffs — describe effect on behaviour.>
+
+FILE 2 — <path/to/file.ts>  [CREATED | EDITED | DELETED]
+  <…>
+
+<Add FILE N blocks as needed.>
+
+================================================================================
+PHASE 5 — REVIEW
+================================================================================
+AI PRE-CHECK    : <TypeScript compile result; any tsc / eslint warnings?>
+TYPE CONSISTENCY: <Were all Zod schemas, Drizzle types, and route types aligned?>
+BOOT CONFIRMED  : <Did the server start cleanly after changes? Any errors logged?>
+
+================================================================================
+PHASE 6 — DELIVERY
+================================================================================
+SECURITY GATE (PRP §22.6)
+  SCANNER 1 — DEP_AUDIT
+    critical = ?   high = ?   moderate = ?
+    <List any moderate+ findings and disposition (false positive / non-blocking).>
+
+  SCANNER 2 — SAST
+    critical = ?   high = ?
+    <List any findings and disposition.>
+
+  SCANNER 3 — HOUNDDOG
+    critical = ?   high = ?   medium = ?
+    <List any findings and disposition.>
+
+  RESULT : CLEARED — critical=0, high=0 across all three scanners
+  GATE   : OPEN — session changes may be documented and deployed
+
+================================================================================
+PHASE 7 — DOCUMENTATION
+================================================================================
+UPDATED FILES
+  replit.md                       — Last Updated date:2026-07-06
+  docs/TECHNICAL_REFERENCE.md     — <describe changes, or "no change required">
+  docs/API_REFERENCE.md           — <describe changes, or "no change required">
+  docs/DEVELOPER_GUIDE.md         — <describe changes, or "no change required">
+  docs/NPS-PROTOCOL.md            — Tier 3 updated with this report filename
+  server/index.ts (PRPSeed)       — CR-NNN added to prpCrs array
+  server/lib/lwe-logger.ts        — broadcastSessionChangesYYYYMMDDA() added
+
+================================================================================
+NPS LABEL CHECK
+================================================================================
+Command   : bash scripts/validate-nps-labels.sh
+            (or: triggered by pre-commit hook)
+Exit code : 0
+Timestamp : 2026-07-06T17:51:00Z          ← REPLACE: paste ISO-8601 UTC timestamp from terminal
+Summary   : OK: all NPS tier labels in docs/NPS-PROTOCOL.md are gapless and non-duplicate.
+
+Notes     : <If the hook blocked a commit, record the blocked commit hash here
+             and the full ERROR output.  Session is NOT closed until exit = 0.>
+
+Template  : docs/session-reports/TEMPLATE.txt (this file is the canonical source)
+
+================================================================================
+ACTIVE AGENTS
+================================================================================
+SUPPORT (001)   : <status — running / degraded / offline>
+GHOST   (002)   : <status>
+IMMUNE  (003)   : <status>
+RAPCD fleet     : <any changes to fleet configuration>
+
+================================================================================
+TRUSTED IPs
+================================================================================
+<List the seeded trusted IP entries currently in ip-ban.ts / db, or "unchanged".>
+
+================================================================================
+IMPACT
+================================================================================
+USER-FACING     : <What the end-user can now do or what changed visibly.>
+OPERATIONAL     : <Any changes to agent behaviour, rate limits, DB schema, etc.>
+PERFORMANCE     : <Any latency, memory, or throughput changes.>
+
+================================================================================
+PRICING LOCKED
+================================================================================
+No pricing changes were introduced in this session.  SPC/SPU rates, Stripe
+plan amounts, and credit deduction logic remain unchanged.
+
+================================================================================
+ECSMID-FIRST
+================================================================================
+All new routes and data access paths introduced in this session require a valid
+ECSMID-authenticated session (req.uwaPrincipal) or an Replit OAuth admin
+session before any data is returned.  No anonymous access was introduced.
+
+================================================================================
+GE-002
+================================================================================
+No changes to the ECSMID cipher key, WASM binary, or seal/unseal endpoints
+were introduced in this session.  The Transcendental Gate split-cipher
+invariant is preserved.
+
+================================================================================
+NEXT SESSION
+================================================================================
+Open CRs carrying into next session:
+  • <CR-NNN — title, or "none">
+
+Recommended next actions for Protocol Owner:
+  • <e.g. "Publish to production after reviewing PRSM score", or "none">
+
+Recommended first task for next agent session:
+  • <Describe the highest-priority unfinished item — be specific enough that
+    the next agent can act on it without asking a clarifying question.>
+
+================================================================================
+SIGN-OFF
+================================================================================
+Author          : Josiah Umezurike
+Date            :2026-07-06
+Deploy phrase   : I am ready for deployment.
+                  (Human responds: "I am ready to publish." → clicks Publish)
+================================================================================
+END OF REPORT
+================================================================================

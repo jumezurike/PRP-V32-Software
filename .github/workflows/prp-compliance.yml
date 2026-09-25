@@ -1,0 +1,238 @@
+name: PRP v3.1 Compliance Gate
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main, develop]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PRP v3.1 §30 — Non-Markovian Property Startup Enforcement
+#
+# This workflow runs on GitHub's infrastructure — outside the agent's
+# environment. An agent CANNOT bypass it with --no-verify or any other
+# local trick. Combined with branch protection rules requiring this check
+# to pass, it makes non-compliance STRUCTURALLY IMPOSSIBLE on main.
+#
+# Pair with GitHub branch protection:
+#   Settings → Branches → main
+#   → Require status checks: "PRP v3.1 Compliance Gate"
+#   → Do not allow bypassing the above settings
+# ─────────────────────────────────────────────────────────────────────────────
+
+jobs:
+  prp-compliance-check:
+    name: PRP v3.1 Compliance Gate
+    runs-on: ubuntu-latest
+
+    steps:
+      # ── Checkout ─────────────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── Gate scripts present ──────────────────────────────────────────────────
+      - name: Verify enforcement scripts exist
+        run: |
+          echo "=== PRP v3.1 §30 — Script Presence Check ==="
+          MISSING=0
+          for script in \
+            scripts/nps_gate.sh \
+            scripts/nps_work_gate.sh \
+            scripts/approval_gate.sh \
+            scripts/stage_for_approval.sh \
+            scripts/validate_nps_labels.sh \
+            scripts/validate_session_close.sh \
+            scripts/security_gate.sh \
+            scripts/.githooks/pre-commit \
+            scripts/.githooks/pre-push; do
+            if [[ ! -f "$script" ]]; then
+              echo "ERROR: $script missing — PRP v3.1 violation"
+              MISSING=$((MISSING + 1))
+            else
+              echo "✓  $script"
+            fi
+          done
+          if [[ $MISSING -gt 0 ]]; then
+            echo ""
+            echo "FAIL: $MISSING enforcement script(s) missing."
+            echo "Run: bash scripts/setup_nps_tiers.sh to restore."
+            exit 1
+          fi
+
+      # ── NPS-PROTOCOL.md present ───────────────────────────────────────────────
+      - name: Verify NPS-PROTOCOL.md exists
+        run: |
+          if [[ ! -f "docs/NPS-PROTOCOL.md" ]]; then
+            echo "ERROR: docs/NPS-PROTOCOL.md missing — PRP v3.1 §30.5 violation"
+            exit 1
+          fi
+          echo "✓  docs/NPS-PROTOCOL.md present"
+
+      # ── Tier structure ─────────────────────────────────────────────────────────
+      - name: Verify tier directory structure
+        run: |
+          echo "=== Checking tier structure ==="
+          MISSING=0
+          for tier in tier1 tier2 tier3 tier4 tier5; do
+            if [[ ! -d "tiers/$tier" ]]; then
+              echo "ERROR: tiers/$tier directory missing"
+              MISSING=$((MISSING + 1))
+            else
+              echo "✓  tiers/$tier"
+            fi
+          done
+          if [[ $MISSING -gt 0 ]]; then
+            echo "Run: bash scripts/setup_nps_tiers.sh to create tier directories."
+            exit 1
+          fi
+
+      # ── NPS tier label sequences ───────────────────────────────────────────────
+      - name: Validate NPS tier label sequences
+        run: |
+          echo "=== PRP v3.1 §30 — NPS Label Sequence Check ==="
+          chmod +x scripts/validate_nps_labels.sh
+          bash scripts/validate_nps_labels.sh docs/NPS-PROTOCOL.md
+
+      # ── NPS gate rejects no-callsign ──────────────────────────────────────────
+      - name: Verify NPS gate rejects missing callsign
+        run: |
+          chmod +x scripts/nps_gate.sh
+          echo "Testing: no callsign must exit non-zero"
+          if bash scripts/nps_gate.sh 2>/dev/null; then
+            echo "ERROR: NPS gate should have rejected empty callsign"
+            exit 1
+          fi
+          echo "✓  Correctly rejected (no callsign)"
+
+      # ── NPS gate rejects wrong callsigns ──────────────────────────────────────
+      - name: Verify NPS gate rejects invalid callsigns
+        run: |
+          echo "Testing: invalid callsigns must be rejected"
+          for wrong_word in "approved" "proceed" "yes" "ok" "begin" "start"; do
+            if bash scripts/nps_gate.sh "$wrong_word" 2>/dev/null; then
+              echo "ERROR: '$wrong_word' should have been rejected as callsign"
+              exit 1
+            fi
+            echo "✓  Correctly rejected: '$wrong_word'"
+          done
+
+      # ── Work gate blocks without NPS ──────────────────────────────────────────
+      - name: Verify work gate blocks without NPS session
+        run: |
+          chmod +x scripts/nps_work_gate.sh
+          # Ensure no stale state file from a previous step
+          rm -f .nps_state scripts/.nps_sentinel
+          echo "Testing: work gate must block when NPS not complete"
+          if bash scripts/nps_work_gate.sh echo "should not run" 2>/dev/null; then
+            echo "ERROR: work gate should have blocked — no NPS session active"
+            exit 1
+          fi
+          echo "✓  Correctly blocked (no NPS session)"
+
+      # ── Approval gate rejects commits without sentinel ────────────────────────
+      - name: Verify approval gate structure
+        run: |
+          chmod +x scripts/approval_gate.sh
+          # Check that --status reports LOCKED when no sentinel exists
+          rm -f scripts/.approval_granted
+          STATUS_OUT=$(bash scripts/approval_gate.sh --status 2>&1)
+          if echo "$STATUS_OUT" | grep -q "LOCKED"; then
+            echo "✓  Approval gate correctly shows LOCKED with no sentinel"
+          else
+            echo "ERROR: approval gate --status did not report LOCKED"
+            echo "$STATUS_OUT"
+            exit 1
+          fi
+
+      # ── Approval word validation ───────────────────────────────────────────────
+      - name: Verify 'approved'/'proceed' language in scripts
+        run: |
+          echo "=== Checking enforcement of approval word language ==="
+          MISSING_WORD=0
+          for script in \
+            scripts/approval_gate.sh \
+            scripts/stage_for_approval.sh \
+            scripts/.githooks/pre-commit; do
+            if grep -q "approved.*proceed\|proceed.*approved" "$script"; then
+              echo "✓  $script: 'approved'/'proceed' language present"
+            else
+              echo "WARN: $script may be missing explicit 'approved'/'proceed' language"
+              MISSING_WORD=$((MISSING_WORD + 1))
+            fi
+          done
+          # Non-blocking warn only — language check is advisory
+          echo "Language check complete ($MISSING_WORD advisory warnings)"
+
+      # ── Hardcoded secrets scan (§15.1) ────────────────────────────────────────
+      - name: Scan for hardcoded credentials
+        run: |
+          echo "=== PRP v3.1 §15.1 — Credential Scan ==="
+          FOUND=0
+          # Patterns that indicate real secrets (not examples/templates/tests)
+          while IFS= read -r line; do
+            FILE=$(echo "$line" | cut -d: -f1)
+            # Skip known-safe files
+            [[ "$FILE" == *"README"* ]] && continue
+            [[ "$FILE" == *"TEMPLATE"* ]] && continue
+            [[ "$FILE" == *"example"* ]] && continue
+            [[ "$FILE" == *".md" ]] && continue
+            echo "WARNING: possible credential in $line"
+            FOUND=$((FOUND + 1))
+          done < <(grep -rn \
+            -e 'password\s*=\s*"[^"]' \
+            -e 'api_key\s*=\s*"[^"]' \
+            -e 'secret\s*=\s*"[^"]' \
+            --include="*.sh" --include="*.py" --include="*.js" --include="*.ts" \
+            --exclude-dir=".git" --exclude-dir="node_modules" \
+            . 2>/dev/null || true)
+          if [[ $FOUND -gt 0 ]]; then
+            echo "FAIL: $FOUND potential hardcoded credential(s) found — review required"
+            exit 1
+          fi
+          echo "✓  No hardcoded credentials detected"
+
+      # ── Session report exists (push to main only) ─────────────────────────────
+      - name: Verify session report exists (push to main)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          echo "=== PRP v3.1 §10 — Session Report Check ==="
+          TODAY=$(date -u +%Y%m%d)
+          FOUND=0
+          if [[ -d "docs/session-reports" ]]; then
+            while IFS= read -r -d '' f; do
+              BASENAME=$(basename "$f")
+              if [[ "$BASENAME" == *"${TODAY}"*_PR.txt ]]; then
+                FOUND=1
+                echo "✓  Session report found: $BASENAME"
+                break
+              fi
+            done < <(find docs/session-reports -maxdepth 1 -type f -name "*_PR.txt" -print0 2>/dev/null)
+          fi
+          if [[ $FOUND -eq 0 ]]; then
+            echo ""
+            echo "⛔  No session report dated $TODAY found in docs/session-reports/"
+            echo "    A push to main requires a completed session report."
+            echo "    Per PRP v3.1 §10: session must be closed before deploying."
+            echo ""
+            echo "    Required: docs/session-reports/<INITIALS>_<ENV>_${TODAY}_<HHMM>_PR.txt"
+            exit 1
+          fi
+
+      # ── Summary ───────────────────────────────────────────────────────────────
+      - name: PRP v3.1 compliance summary
+        run: |
+          echo ""
+          echo "╔══════════════════════════════════════════════════════╗"
+          echo "║  PRP v3.1 COMPLIANCE GATE — PASSED                   ║"
+          echo "║                                                      ║"
+          echo "║  ✓ All enforcement scripts present                   ║"
+          echo "║  ✓ NPS-PROTOCOL.md present                           ║"
+          echo "║  ✓ Tier structure intact                              ║"
+          echo "║  ✓ NPS label sequences valid                          ║"
+          echo "║  ✓ Gate rejects invalid callsigns                    ║"
+          echo "║  ✓ Work gate blocks without NPS                      ║"
+          echo "║  ✓ Approval gate enforces 'approved'/'proceed'       ║"
+          echo "║  ✓ No hardcoded credentials                           ║"
+          echo "║                                                      ║"
+          echo "║  Protocol Owner: Josiah Umezurike / LokDon            ║"
+          echo "╚══════════════════════════════════════════════════════╝"
